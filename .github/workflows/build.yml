@@ -55,7 +55,7 @@ jobs:
           endian = 'little'
           EOF
 
-      - name: Configure and Compile Mesa Turnip
+     - name: Configure and Compile Mesa Turnip
         run: |
           cd mesa
           meson setup build-android \
@@ -69,12 +69,24 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Db_lto=false
 
-          ninja -C build-android src/freedreno/vulkan/vulkan.freedreno.so
+          # Build using the logical target name rather than an explicit file path
+          ninja -C build-android vulkan_freedreno
 
       - name: Package AdrenoTools Driver ZIP
         run: |
           mkdir -p package
-          cp mesa/build-android/src/freedreno/vulkan/vulkan.freedreno.so package/
+          
+          # Locate the compiled Turnip shared library (.so)
+          LIB_PATH=$(find mesa/build-android -name "*vulkan*freedreno*.so" | head -n 1)
+          
+          if [ -z "$LIB_PATH" ]; then
+            echo "Error: Could not locate compiled freedreno vulkan library."
+            exit 1
+          fi
+
+          echo "Found driver library at: $LIB_PATH"
+          cp "$LIB_PATH" package/vulkan.freedreno.so
+
           cat << 'EOF' > package/meta.json
           {
             "schemaVersion": 1,
@@ -88,6 +100,7 @@ jobs:
             "libraryName": "vulkan.freedreno.so"
           }
           EOF
+
           cd package
           zip -r ../Turnip-A740-NMS-Fix.zip ./*
 
