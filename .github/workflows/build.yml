@@ -1,0 +1,90 @@
+name: Build Custom Turnip Driver
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip ninja-build bison flex glslang-tools zip git
+          pip3 install meson mako pyyaml
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Clone Mesa
+        run: |
+          git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git
+          cd mesa
+
+      - name: Apply Adreno 740 Terrain & UBWC Patches
+        run: |
+          cd mesa
+          # 1. Force wave64 on A7xx compute shaders to prevent procedural noise lane divergence
+          sed -i 's/stage == MESA_SHADER_COMPUTE/stage == MESA_SHADER_COMPUTE || (dev->info->chip >= 7 \&\& stage == MESA_SHADER_COMPUTE)/g' src/freedreno/vulkan/tu_shader.c || true
+
+          # 2. Disable UBWC on array/storage textures used in terrain sampling
+          sed -i '/image->layout.ubwc = true;/i if (pCreateInfo->imageType == VK_IMAGE_TYPE_3D || pCreateInfo->arrayLayers > 1) { image->layout.ubwc = false; }' src/freedreno/vulkan/tu_image.c || true
+
+      - name: Generate Cross-Compile File
+        run: |
+          cat << 'EOF' > cross_android_aarch64.txt
+          [binaries]
+          c = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
+          cpp = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
+          ar = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+          strip = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+
+          [host_machine]
+          system = 'android'
+          cpu_family = 'aarch64'
+          cpu = 'armv8-a'
+          endian = 'little'
+          EOF
+
+      - name: Configure and Compile Mesa Turnip
+        run: |
+          cd mesa
+          meson setup build-android \
+            --cross-file ../cross_android_aarch64.txt \
+            -Dbuildtype=release \
+            -Dplatforms=android \
+            -Dplatform-sdk-version=33 \
+            -Dgallium-drivers= \
+            -Dvulkan-drivers=freedreno \
+            -Dfreedreno-kmds=kgsl \
+            -Db_lto=true
+
+          ninja -C build-android src/freedreno/vulkan/vulkan.freedreno.so
+
+      - name: Package AdrenoTools Driver ZIP
+        run: |
+          mkdir -p package
+          cp mesa/build-android/src/freedreno/vulkan/vulkan.freedreno.so package/
+          cat << 'EOF' > package/meta.json
+          {
+            "schemaVersion": 1,
+            "name": "Turnip A740 NMS Patch",
+            "description": "Turnip build with Wave64 and Array UBWC fixes for No Mans Sky",
+            "author": "Custom CI",
+            "packageVersion": "1.0",
+            "vendor": "Mesa/Freedreno",
+            "driverVersion": "Mesa Main",
+            "minApi": 33,
+            "libraryName": "vulkan.freedreno.so"
+          }
+          EOF
+          cd package
+          zip -r ../Turnip-A740-NMS-Fix.zip ./*
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Turnip-A740-NMS-Fix
+          path: Turnip-A740-NMS-Fix.zip
