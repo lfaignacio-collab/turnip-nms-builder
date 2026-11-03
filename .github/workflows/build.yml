@@ -66,7 +66,7 @@ jobs:
             -Dgallium-drivers= \
             -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=kgsl \
-            -Db_lto=true
+            -Db_lto=false
 
           ninja -C build-android src/freedreno/vulkan/vulkan.freedreno.so
 
