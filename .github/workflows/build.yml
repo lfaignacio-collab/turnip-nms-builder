@@ -26,10 +26,10 @@ jobs:
       - name: Apply Adreno 740 Terrain & UBWC Patches
         run: |
           cd mesa
-          # 1. Force wave64 on A7xx compute shaders to prevent procedural noise lane divergence
+          # 1. Force wave64 on A7xx compute shaders
           sed -i 's/stage == MESA_SHADER_COMPUTE/stage == MESA_SHADER_COMPUTE || (dev->info->chip >= 7 \&\& stage == MESA_SHADER_COMPUTE)/g' src/freedreno/vulkan/tu_shader.c || true
 
-          # 2. Disable UBWC on array/storage textures used in terrain sampling
+          # 2. Disable UBWC on array/storage textures
           sed -i '/image->layout.ubwc = true;/i if (pCreateInfo->imageType == VK_IMAGE_TYPE_3D || pCreateInfo->arrayLayers > 1) { image->layout.ubwc = false; }' src/freedreno/vulkan/tu_image.c || true
 
       - name: Generate Cross-Compile File
@@ -69,15 +69,19 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Db_lto=false
 
-          ninja -C build-android vulkan_freedreno
+          ninja -C build-android
 
       - name: Package AdrenoTools Driver ZIP
         run: |
           mkdir -p package
           
-          # Locate the compiled Turnip shared library
-          LIB_PATH=$(find mesa/build-android -name "*vulkan*freedreno*.so" | head -n 1)
+          LIB_PATH=$(find mesa/build-android/src/freedreno/vulkan/ -type f -name "*vulkan*.so" | head -n 1)
           
+          if [ -z "$LIB_PATH" ]; then
+            echo "Searching entire build directory for compiled Vulkan driver..."
+            LIB_PATH=$(find mesa/build-android -type f -name "*freedreno*.so" | grep -v "test" | head -n 1)
+          fi
+
           if [ -z "$LIB_PATH" ]; then
             echo "Error: Could not locate compiled freedreno vulkan library."
             exit 1
