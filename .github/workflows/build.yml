@@ -26,10 +26,10 @@ jobs:
       - name: Apply Adreno 740 Terrain & UBWC Patches
         run: |
           cd mesa
-          # 1. Force wave64 on A7xx compute shaders
+          # 1. Force wave64 on A7xx compute shaders to prevent procedural noise lane divergence
           sed -i 's/stage == MESA_SHADER_COMPUTE/stage == MESA_SHADER_COMPUTE || (dev->info->chip >= 7 \&\& stage == MESA_SHADER_COMPUTE)/g' src/freedreno/vulkan/tu_shader.c || true
 
-          # 2. Disable UBWC on array/storage textures
+          # 2. Disable UBWC on array/storage textures used in terrain sampling
           sed -i '/image->layout.ubwc = true;/i if (pCreateInfo->imageType == VK_IMAGE_TYPE_3D || pCreateInfo->arrayLayers > 1) { image->layout.ubwc = false; }' src/freedreno/vulkan/tu_image.c || true
 
       - name: Generate Cross-Compile File
@@ -55,7 +55,7 @@ jobs:
           endian = 'little'
           EOF
 
-     - name: Configure and Compile Mesa Turnip
+      - name: Configure and Compile Mesa Turnip
         run: |
           cd mesa
           meson setup build-android \
@@ -69,14 +69,13 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Db_lto=false
 
-          # Build using the logical target name rather than an explicit file path
           ninja -C build-android vulkan_freedreno
 
       - name: Package AdrenoTools Driver ZIP
         run: |
           mkdir -p package
           
-          # Locate the compiled Turnip shared library (.so)
+          # Locate the compiled Turnip shared library
           LIB_PATH=$(find mesa/build-android -name "*vulkan*freedreno*.so" | head -n 1)
           
           if [ -z "$LIB_PATH" ]; then
