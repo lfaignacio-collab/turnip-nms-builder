@@ -10,7 +10,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip ninja-build bison flex glslang-tools zip git
+          sudo apt-get install -y python3-pip ninja-build bison flex glslang-tools zip git pkg-config
           pip3 install meson mako pyyaml
 
       - name: Setup Android NDK
@@ -61,8 +61,9 @@ jobs:
           meson setup build-android \
             --cross-file ../cross_android_aarch64.txt \
             -Dbuildtype=release \
-            -Dplatforms=android \
+            -Dplatforms= \
             -Dplatform-sdk-version=33 \
+            -Dandroid-libbacktrace=disabled \
             -Dgallium-drivers= \
             -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=kgsl \
