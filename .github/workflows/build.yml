@@ -14,6 +14,7 @@ jobs:
           pip3 install meson mako pyyaml
 
       - name: Setup Android NDK
+        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26d
@@ -21,25 +22,31 @@ jobs:
       - name: Clone Mesa
         run: |
           git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git
-          cd mesa
 
       - name: Apply Adreno 740 Terrain & UBWC Patches
         run: |
           cd mesa
-          # 1. Force wave64 on A7xx compute shaders to prevent procedural noise lane divergence
+          # 1. Force wave64 on A7xx compute shaders
           sed -i 's/stage == MESA_SHADER_COMPUTE/stage == MESA_SHADER_COMPUTE || (dev->info->chip >= 7 \&\& stage == MESA_SHADER_COMPUTE)/g' src/freedreno/vulkan/tu_shader.c || true
 
-          # 2. Disable UBWC on array/storage textures used in terrain sampling
+          # 2. Disable UBWC on array/storage textures
           sed -i '/image->layout.ubwc = true;/i if (pCreateInfo->imageType == VK_IMAGE_TYPE_3D || pCreateInfo->arrayLayers > 1) { image->layout.ubwc = false; }' src/freedreno/vulkan/tu_image.c || true
 
       - name: Generate Cross-Compile File
         run: |
-          cat << 'EOF' > cross_android_aarch64.txt
+          NDK_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
+          if [ -z "$NDK_PATH" ]; then
+            NDK_PATH="$ANDROID_NDK_LATEST_HOME"
+          fi
+
+          echo "Targeting NDK path: $NDK_PATH"
+
+          cat << EOF > cross_android_aarch64.txt
           [binaries]
-          c = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
-          cpp = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
-          ar = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
-          strip = '${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+          c = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
+          cpp = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
+          ar = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+          strip = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
 
           [host_machine]
           system = 'android'
